@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trivia Interactiva</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      background-color: #0f172a;
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background-color: #1e293b;
+      padding: 32px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      max-width: 500px;
+      width: 100%;
+      text-align: center;
+    }
+    h1, h2 {
+      margin-bottom: 20px;
+      font-size: 1.5rem;
+    }
+    .options-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    button {
+      background-color: #3b82f6;
+      color: white;
+      border: none;
+      padding: 14px 20px;
+      font-size: 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background-color: #2563eb;
+    }
+    button:disabled {
+      background-color: #64748b;
+      cursor: not-allowed;
+    }
+    .screen {
+      display: none;
+    }
+    .active {
+      display: block;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 1.25rem;
+      margin: 20px 0;
+    }
+    .incorrect {
+      background-color: #991b1b;
+      color: #f87171;
+    }
+    /* Estilos del formulario */
+    .form-group {
+      text-align: left;
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.9rem;
+      color: #cbd5e1;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background-color: #0f172a;
+      color: #fff;
+      font-size: 1rem;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <!-- PANTALLA 1: Selección entre preguntas -->
+    <div id="screen-select" class="screen active">
+      <h2>Selecciona una pregunta</h2>
+      <p id="loading-text">Cargando base de datos...</p>
+      <div id="select-options" class="options-grid"></div>
+    </div>
+
+    <!-- PANTALLA 2: Visualización de pregunta y respuesta -->
+    <div id="screen-question" class="screen">
+      <h2 id="question-text">Pregunta</h2>
+      <div id="answer-options" class="options-grid"></div>
+    </div>
+
+    <!-- PANTALLA 3: Resultado Incorrecto -->
+    <div id="screen-incorrect" class="screen">
+      <h2>Resultado</h2>
+      <div class="status-badge incorrect">INCORRECTO</div>
+      <div>
+        <button onclick="goToSelect()">Vuélvelo a intentar</button>
+      </div>
+    </div>
+
+    <!-- PANTALLA 4: Formulario al responder CORRECTO -->
+    <div id="screen-form" class="screen">
+      <h2 style="color: #4ade80;">¡Felicidades tu respuesta es CORRECTA!</h2>
+      <p style="margin-bottom: 20px; color: #94a3b8;">Completa tus datos para registrarte:</p>
+      
+      <form id="user-form" onsubmit="enviarDatos(event)">
+        <div class="form-group">
+          <label for="nombre">Nombre</label>
+          <input type="text" id="nombre" required placeholder="Tu nombre">
+        </div>
+        
+        <div class="form-group">
+          <label for="apellido">Apellido</label>
+          <input type="text" id="apellido" required placeholder="Tu apellido">
+        </div>
+        
+        <div class="form-group">
+          <label for="celular">Número de Celular</label>
+          <input type="tel" id="celular" required placeholder="Ej: 3871234567">
+        </div>
+
+        <button type="submit" id="btn-submit" style="width: 100%; margin-top: 10px;">Enviar Datos</button>
+      </form>
+    </div>
+
+    <!-- PANTALLA 5: Éxito en la carga de datos -->
+    <div id="screen-success" class="screen">
+      <h2>¡Datos enviados con éxito!</h2>
+      <p style="margin: 20px 0; color: #cbd5e1;">Tu respuesta y registro se guardaron correctamente.</p>
+      <button onclick="goToSelect()">Volver al Panel Principal</button>
+    </div>
+  </div>
+
+  <script>
+    // URL de donde lee las preguntas
+    const API_QUESTIONS_URL = "https://script.google.com/macros/s/AKfycbzwBL2olEOwUZcFybJOQBA9S9Nqbcn-7c_N7mfJGy8dV4g4X_Vp4Lb7T9y1a4sDAA49/exec";
+    
+    // URL de donde guarda los datos del formulario
+    const API_FORM_URL = "https://script.google.com/macros/s/AKfycbxhf5S5-0fnyHRDh4vZGwxiKWZxxHvAQidtxIf9Cf87HnLwCbZvGQ-BAUpjUxhbNPs/exec";
+
+    let questionsData = [];
+
+    async function loadData() {
+      try {
+        const response = await fetch(API_QUESTIONS_URL, { redirect: "follow" });
+        questionsData = await response.json();
+        renderSelectionScreen();
+      } catch (error) {
+        document.getElementById("loading-text").innerText = "Error al conectar con Google Sheets.";
+      }
+    }
+
+    function renderSelectionScreen() {
+      document.getElementById("loading-text").style.display = "none";
+      const container = document.getElementById("select-options");
+      container.innerHTML = "";
+
+      const twoOptions = questionsData.slice(0, 2);
+
+      twoOptions.forEach((item) => {
+        const btn = document.createElement("button");
+        btn.innerText = item.titulo_opcion || item.pregunta;
+        btn.onclick = () => showQuestionScreen(item);
+        container.appendChild(btn);
+      });
+    }
+
+    function showQuestionScreen(item) {
+      document.getElementById("question-text").innerText = item.pregunta;
+      const container = document.getElementById("answer-options");
+      container.innerHTML = "";
+
+      const answers = [
+        { text: item.opcion_correcta, isCorrect: true },
+        { text: item.opcion_incorrecta_1, isCorrect: false },
+        { text: item.opcion_incorrecta_2, isCorrect: false }
+      ].sort(() => Math.random() - 0.5);
+
+      answers.forEach(ans => {
+        const btn = document.createElement("button");
+        btn.innerText = ans.text;
+        btn.onclick = () => handleAnswer(ans.isCorrect);
+        container.appendChild(btn);
+      });
+
+      switchScreen("screen-question");
+    }
+
+    function handleAnswer(isCorrect) {
+      if (isCorrect) {
+        document.getElementById("user-form").reset();
+        switchScreen("screen-form");
+      } else {
+        switchScreen("screen-incorrect");
+      }
+    }
+
+  async function enviarDatos(e) {
+      e.preventDefault();
+      
+      const submitBtn = document.getElementById("btn-submit");
+      submitBtn.disabled = true;
+      submitBtn.innerText = "Enviando datos...";
+
+      const valorNombre = document.getElementById("nombre").value.trim();
+      const valorApellido = document.getElementById("apellido").value.trim();
+      const valorCelular = document.getElementById("celular").value.trim();
+
+      // Prueba rápida: si esto sale vacío en el navegador, el input no se está leyendo
+      console.log("Valores a enviar:", { valorNombre, valorApellido, valorCelular });
+
+      const payload = {
+        nombre: valorNombre,
+        apellido: valorApellido,
+        celular: valorCelular
+      };
+
+      try {
+        await fetch(API_FORM_URL, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        switchScreen("screen-success");
+      } catch (err) {
+        alert("Hubo un error al guardar los datos. Intenta nuevamente.");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "Enviar Datos";
+      }
+    }
+
+    function goToSelect() {
+      switchScreen("screen-select");
+    }
+
+    function switchScreen(screenId) {
+      document.querySelectorAll(".screen").forEach(el => el.classList.remove("active"));
+      document.getElementById(screenId).classList.add("active");
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
